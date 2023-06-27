@@ -37,7 +37,7 @@
 #define GAME_FRAME_SIZE (GAME_WIDTH * GAME_HEIGHT * (GAME_BPP / 8))  //  360KB
 //  memory offsets
 #define MEMORY_OFFSET(POSX, POSY, X, Y) ((((GAME_WIDTH * GAME_HEIGHT) - GAME_WIDTH) - (GAME_WIDTH * POSY) + POSX) + X - (GAME_WIDTH * Y))
-#define WORLD_MAP_MEMORY_OFFSET(X, Y) ((((GAME_WIDTH * GAME_HEIGHT) - GAME_WIDTH)) + X - (GAME_WIDTH * Y))
+#define WORLD_MAP_MEMORY_OFFSET(POSX, POSY) ((((GAME_WIDTH * GAME_HEIGHT) - GAME_WIDTH)) + POSX - (GAME_WIDTH * POSY))
 #define BITMAP_MEMORY_OFFSET(POSX, POSY, X, Y) (((POSX * POSY) - POSX) + X - (POSX * Y))
 #define STARTING_FONT_SHEET_BYTE(WIDTH, HEIGHT, CHAR_WIDTH, N) ((WIDTH * HEIGHT) - WIDTH + (CHAR_WIDTH * N))
 #define FONT_SHEET_OFFSET(BYTE, WIDTH, X, Y) (BYTE + X - (WIDTH * Y))
@@ -115,17 +115,17 @@ typedef struct GAME_PERFORMANCE_DATA {
 	LARGE_INTEGER ElapsedMicrosecondsAcc;
 	BOOL DisplayDebug;
 	BOOL MapDebug;
-	double AverageFPS;
-	int32_t MonitorWidth;
-	int32_t MonitorHeight;
+	float AverageFPS;
+	uint16_t MonitorWidth;
+	uint16_t MonitorHeight;
 } GAMEPERFORMANCEDATA;
 
 typedef struct PLAYER_OBJECT {
 	GAMEBITMAP Sprite[4][3];
-	int32_t PosX;
-	int32_t PosY;
-	int32_t WorldPosX;
-	int32_t WorldPosY;
+	uint16_t PosX;
+	uint16_t PosY;
+	uint16_t WorldPosX;
+	uint16_t WorldPosY;
 	uint8_t MovementRemaining;
 	uint8_t Direction;
 	uint8_t SpriteIndex;
@@ -158,7 +158,7 @@ GAMEBITMAP BackBuffer, WorldMapBuffer, FontSheetBuffer;
 GAMESOUND BGM, SFX;
 TILEMAP TileMap;
 LPCWSTR PlayerBitmaps[PLAYER_BITMAPS] = { HERO_DOWN_STAND, HERO_DOWN_WALK1, HERO_DOWN_WALK2, HERO_UP_STAND, HERO_UP_WALK1, HERO_UP_WALK2, HERO_RIGHT_STAND, HERO_RIGHT_WALK1, HERO_RIGHT_WALK2, HERO_LEFT_STAND, HERO_LEFT_WALK1, HERO_LEFT_WALK2 };
-int32_t TileTypes[TILE_TYPES] = { TILE_WATER, TILE_SNOW_MOUNTAIN, TILE_MOUNTAIN, TILE_FOREST_TREE, TILE_PALMTREE, TILE_CASTLE, TILE_HOUSE };
+uint8_t TileTypes[TILE_TYPES] = { TILE_WATER, TILE_SNOW_MOUNTAIN, TILE_MOUNTAIN, TILE_FOREST_TREE, TILE_PALMTREE, TILE_CASTLE, TILE_HOUSE };
 
 //  prototypes  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Init(void);
@@ -167,8 +167,8 @@ void RenderGraphics(_In_ HWND hGameWnd);
 void DrawDebug(void);
 void DrawMapDebug(void);
 void LoadBitmapFromFile(_In_ LPCWSTR Filename, _Inout_ GAMEBITMAP *Bitmap);
-void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ int32_t XPixel, _In_ int32_t YPixel, int16_t Brightness);
-void BlitBitmapString(_In_ const char *String, _In_ GAMEBITMAP *BitMap, _In_ PIXEL32 *Color, _In_ int32_t X, _In_ int32_t Y);
+void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ uint16_t XPixel, _In_ uint16_t YPixel, int16_t Brightness);
+void BlitBitmapString(_In_ const char *String, _In_ GAMEBITMAP *BitMap, _In_ PIXEL32 *Color, _In_ uint16_t X, _In_ uint16_t Y);
 void BlitWorldBitmap(_In_ GAMEBITMAP *BitMap);
 void InitSoundEngine(void);
 void LoadWavFromFile(_In_ LPCWSTR FileName, _Inout_ GAMESOUND *GameSound);
@@ -191,9 +191,9 @@ void Init(void)
 	Player.Direction = DIRECTION_DOWN;
 
 	//  load player bitmap files
-	int32_t k = 0;
-	for (int32_t i = 0; i < 4; i++) {
-		for (int32_t j = 0; j < 3; j++) {
+	uint8_t k = 0;
+	for (uint8_t i = 0; i < 4; i++) {
+		for (uint8_t j = 0; j < 3; j++) {
 			LoadBitmapFromFile(PlayerBitmaps[k], &Player.Sprite[i][j]);
 			k++;
 		}
@@ -216,8 +216,8 @@ void Init(void)
 void PlayerInput(_In_ HWND hGameWnd)
 {
 	BOOL CanMove = TRUE;
-	static int16_t DebugKeyWasDown = 0;
-	static int16_t MapDebugKeyWasDown = 0;
+	static uint16_t DebugKeyWasDown = 0;
+	static uint16_t MapDebugKeyWasDown = 0;
 
 	if (KEY_DOWN(VK_ESCAPE))
 		SendMessage(hGameWnd, WM_CLOSE, 0, 0);
@@ -266,7 +266,7 @@ void PlayerInput(_In_ HWND hGameWnd)
 	if (Player.PosY % 16 == 0)
 		Player.WorldPosY =  Player.PosY / 16;
 	
-	for (int32_t i = 0; i < TILE_TYPES; i++) {
+	for (uint8_t i = 0; i < TILE_TYPES; i++) {
 		if (KEY_DOWN(VK_DOWN)) {
 			if (Player.WorldPosY < TileMap.Height - 1) {
 				if (TileMap.Map[Player.WorldPosY+1][Player.WorldPosX] == TileTypes[i])
@@ -403,8 +403,8 @@ void DrawMapDebug(void)
 	char DebugString[64] = { 0 };
 	PIXEL32 Color = { 0x00, 0x00, 0x00, 0xFF };  //  black
 
-	for (int32_t i = 0; i < TileMap.Height; i++) {
-		for (int32_t j = 0; j < TileMap.Width; j++) {
+	for (uint16_t i = 0; i < TileMap.Height; i++) {
+		for (uint16_t j = 0; j < TileMap.Width; j++) {
 			sprintf_s(DebugString, _countof(DebugString), "%d", TileMap.Map[i][j]);
 			BlitBitmapString(DebugString, &FontSheetBuffer, &Color, MAP_DEBUG_OFFSET(GAME_WIDTH, j), MAP_DEBUG_OFFSET(GAME_HEIGHT, i));
 		}
@@ -432,7 +432,7 @@ void LoadBitmapFromFile(_In_ LPCWSTR Filename, _Inout_ GAMEBITMAP *Bitmap)
 	CloseHandle(FileHandle);
 }
 
-void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ int32_t XPixel, _In_ int32_t YPixel, int16_t Brightness)
+void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ uint16_t XPixel, _In_ uint16_t YPixel, int16_t Brightness)
 {
 	PIXEL32 BitmapPixel;
 	__m256i BitmapOctoPixel;
@@ -440,9 +440,9 @@ void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ int32_t XPixel, _In_ int32_t 
 	ZeroMemory(&BitmapPixel, sizeof(PIXEL32));
 	ZeroMemory(&BitmapOctoPixel, sizeof(__m256i));
 	
-	for (int32_t y = 0; y < BitMap->BitMapInfo.bmiHeader.biHeight; y++) {
-		int32_t PixelsRemaining = BitMap->BitMapInfo.bmiHeader.biWidth;
-		int32_t x = 0;
+	for (uint16_t y = 0; y < BitMap->BitMapInfo.bmiHeader.biHeight; y++) {
+		uint16_t PixelsRemaining = BitMap->BitMapInfo.bmiHeader.biWidth;
+		uint16_t x = 0;
 		
 		while (PixelsRemaining >= 8) {
 			BitmapOctoPixel = _mm256_load_si256((__m256i*) ((PIXEL32*) BitMap->Memory + BITMAP_MEMORY_OFFSET(BitMap->BitMapInfo.bmiHeader.biWidth, BitMap->BitMapInfo.bmiHeader.biHeight, x, y)));
@@ -453,7 +453,7 @@ void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ int32_t XPixel, _In_ int32_t 
 			__m256i Recombined = _mm256_packus_epi16(Half1, Half2);
 			BitmapOctoPixel = _mm256_permute4x64_epi64(Recombined, _MM_SHUFFLE(3, 1, 2, 0));
 			__m256i Mask = _mm256_cmpeq_epi8(BitmapOctoPixel, _mm256_set1_epi8(-1));
-			_mm256_maskstore_epi32((int*) ((PIXEL32*) BackBuffer.Memory + MEMORY_OFFSET(XPixel, YPixel, x, y)), Mask, BitmapOctoPixel);
+			_mm256_maskstore_epi32((int32_t*) ((PIXEL32*) BackBuffer.Memory + MEMORY_OFFSET(XPixel, YPixel, x, y)), Mask, BitmapOctoPixel);
 			
 			PixelsRemaining -= 8;
 			x += 8;
@@ -476,15 +476,15 @@ void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ int32_t XPixel, _In_ int32_t 
 	}
 }
 
-void BlitBitmapString(_In_ const char *String, _In_ GAMEBITMAP *BitMap, _In_ PIXEL32 *Color, _In_ int32_t X, _In_ int32_t Y)
+void BlitBitmapString(_In_ const char *String, _In_ GAMEBITMAP *BitMap, _In_ PIXEL32 *Color, _In_ uint16_t X, _In_ uint16_t Y)
 {
 	GAMEBITMAP StringBitmap;
 	const char *Characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`~!@#$%^&*()-=_+\\|[]{};':\",<>./? »«\xf2";
-	int32_t CharWidth = BitMap->BitMapInfo.bmiHeader.biWidth / FONT_SHEET_CHARACTERS_PER_ROW;
-	int32_t CharHeight = BitMap->BitMapInfo.bmiHeader.biHeight;
-	int32_t BytesPerChar = (CharWidth * CharHeight * (BitMap->BitMapInfo.bmiHeader.biBitCount / 8));
-	int32_t CharactersLength = (int32_t) strlen(Characters);
-	int32_t StringLength = (int32_t) strlen(String);
+	uint16_t CharWidth = BitMap->BitMapInfo.bmiHeader.biWidth / FONT_SHEET_CHARACTERS_PER_ROW;
+	uint16_t CharHeight = BitMap->BitMapInfo.bmiHeader.biHeight;
+	uint16_t BytesPerChar = (CharWidth * CharHeight * (BitMap->BitMapInfo.bmiHeader.biBitCount / 8));
+	uint16_t CharactersLength = (uint16_t) strlen(Characters);
+	uint16_t StringLength = (uint16_t) strlen(String);
 	
 	ZeroMemory(&StringBitmap, sizeof(GAMEBITMAP));
 	
@@ -496,21 +496,21 @@ void BlitBitmapString(_In_ const char *String, _In_ GAMEBITMAP *BitMap, _In_ PIX
 	
 	StringBitmap.Memory = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, BytesPerChar * StringLength);
 
-	for (int32_t i = 0; i < StringLength; i++) {
+	for (uint16_t i = 0; i < StringLength; i++) {
 		PIXEL32 FontSheetPixel;
-		int32_t StartingFontSheetByte = 0;
+		uint16_t StartingFontSheetByte = 0;
 
 		ZeroMemory(&FontSheetPixel, sizeof(PIXEL32));
 
-		for (int32_t j = 0; j < CharactersLength; j++) {
+		for (uint16_t j = 0; j < CharactersLength; j++) {
 			if (String[i] == Characters[j]) {
 				StartingFontSheetByte = STARTING_FONT_SHEET_BYTE(BitMap->BitMapInfo.bmiHeader.biWidth, BitMap->BitMapInfo.bmiHeader.biHeight, CharWidth, j);
 				break;
 			}
 		}
 		
-		for (int32_t y = 0; y < CharHeight; y++) {
-			for (int32_t x = 0; x < CharWidth; x++) {
+		for (uint16_t y = 0; y < CharHeight; y++) {
+			for (uint16_t x = 0; x < CharWidth; x++) {
 				memcpy_s(&FontSheetPixel, sizeof(PIXEL32), (PIXEL32*) BitMap->Memory + FONT_SHEET_OFFSET(StartingFontSheetByte, BitMap->BitMapInfo.bmiHeader.biWidth, x, y), sizeof(PIXEL32));
 
 				FontSheetPixel.Red = Color->Red;
@@ -534,8 +534,8 @@ void BlitWorldBitmap(_In_ GAMEBITMAP *BitMap)
 
 	ZeroMemory(&BitmapOctoPixel, sizeof(__m256i));
 
-	for (int32_t y = 0; y < GAME_HEIGHT; y++) {
-		for (int32_t x = 0; x < GAME_WIDTH; x += 8) {
+	for (uint16_t y = 0; y < GAME_HEIGHT; y++) {
+		for (uint16_t x = 0; x < GAME_WIDTH; x += 8) {
 			BitmapOctoPixel = _mm256_load_si256((__m256i*) ((PIXEL32*) BitMap->Memory + BITMAP_MEMORY_OFFSET(BitMap->BitMapInfo.bmiHeader.biWidth, BitMap->BitMapInfo.bmiHeader.biHeight, x, y)));
 			_mm256_store_si256((__m256i*) ((PIXEL32*) BackBuffer.Memory + WORLD_MAP_MEMORY_OFFSET(x, y)), BitmapOctoPixel);
 		}
@@ -572,7 +572,7 @@ void InitSoundEngine(void)
 	XAudio2Create(&XAudio, 0, XAUDIO2_ANY_PROCESSOR);
 	XAudio->CreateMasteringVoice(&XAudioMasteringVoice, XAUDIO2_DEFAULT_CHANNELS, XAUDIO2_DEFAULT_SAMPLERATE, 0, 0, NULL, AudioCategory_GameEffects);
 	
-	for (int32_t i = 0; i < SFX_SOURCE_VOICES; i++) {
+	for (uint8_t i = 0; i < SFX_SOURCE_VOICES; i++) {
 		XAudio->CreateSourceVoice(&XAudioSFXSourceVoice[i], &WaveFormatSFX, 0, XAUDIO2_DEFAULT_FREQ_RATIO, NULL, NULL, NULL);
 		XAudioSFXSourceVoice[i]->SetVolume(0.5f, XAUDIO2_COMMIT_NOW);
 	}
@@ -586,7 +586,7 @@ void LoadWavFromFile(_In_ LPCWSTR FileName, _Inout_ GAMESOUND *GameSound)
 	HANDLE FileHandle = NULL;
 	DWORD RIFF = 0, DataChunckSearcher = 0, DataChunckSize = 0, BytesRead = 0;
 	BOOL DataChunckFound = FALSE, ReadResult = FALSE;
-	int16_t DataChunckOffset = 0;
+	uint16_t DataChunckOffset = 0;
 
 	FileHandle = CreateFile(FileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	ReadResult = ReadFile(FileHandle, &RIFF, sizeof(DWORD), &BytesRead, NULL);
@@ -623,7 +623,7 @@ void LoadWavFromFile(_In_ LPCWSTR FileName, _Inout_ GAMESOUND *GameSound)
 
 void PlaySFX(_In_ GAMESOUND *GameSound)
 {
-	static int32_t SourceVoiceSelector = 0;
+	static uint8_t SourceVoiceSelector = 0;
 
 	XAudioSFXSourceVoice[SourceVoiceSelector]->SubmitSourceBuffer(&GameSound->Buffer, NULL);
 	XAudioSFXSourceVoice[SourceVoiceSelector]->Start(0, XAUDIO2_COMMIT_NOW);
@@ -673,7 +673,7 @@ void LoadTileMapFromFile(_In_ LPCWSTR FileName, _Inout_ TILEMAP* TileMap)
 
 	Cursor++;  //  start of width value
 
-	for (int32_t i = 0; i < 8; i++) {
+	for (uint8_t i = 0; i < 8; i++) {
 		if (*Cursor == '\"')
 			break;
 
@@ -693,7 +693,7 @@ void LoadTileMapFromFile(_In_ LPCWSTR FileName, _Inout_ TILEMAP* TileMap)
 
 	Cursor++;  //  start of height value
 
-	for (int32_t i = 0; i < 8; i++) {
+	for (uint8_t i = 0; i < 8; i++) {
 		if (*Cursor == '\"')
 			break;
 
@@ -712,14 +712,14 @@ void LoadTileMapFromFile(_In_ LPCWSTR FileName, _Inout_ TILEMAP* TileMap)
 	Cursor = strstr((char*) Buffer, ",");
 	Cursor--;  //  start of tile map values
 
-	for (int32_t i = 0; i < TileMap->Height; i++) {
-		for (int32_t j = 0; j < TileMap->Width; j++) {
+	for (uint16_t i = 0; i < TileMap->Height; i++) {
+		for (uint16_t j = 0; j < TileMap->Width; j++) {
 			memset(TempBuffer, 0, sizeof(TempBuffer));
 
 			while (*Cursor == '\r' || *Cursor == '\n' || *Cursor == '<')
 				Cursor++;
 			
-			for (int32_t k = 0; k < 2; k++) {
+			for (uint8_t k = 0; k < 2; k++) {
 				if (*Cursor == ',')
 					break;
 					
@@ -871,5 +871,5 @@ int32_t APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInsta
 		}
 	}
 
-	return (int) msg.wParam;
+	return (int32_t) msg.wParam;
 }
