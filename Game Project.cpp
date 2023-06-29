@@ -38,7 +38,8 @@
 #define FONT_SHEET_CHARACTERS_PER_ROW 98
 #define SFX_SOURCE_VOICES 4
 //  memory offsets
-#define MEMORY_OFFSET(GAME_WIDTH, GAME_HEIGHT, POSX, POSY, X, Y) ((((GAME_WIDTH * GAME_HEIGHT) - GAME_WIDTH) - (GAME_WIDTH * POSY) + POSX) + X - (GAME_WIDTH * Y))
+//#define MEMORY_OFFSET(GAME_WIDTH, GAME_HEIGHT, POSX, POSY, X, Y) ((((GAME_WIDTH * GAME_HEIGHT) - GAME_WIDTH) - (GAME_WIDTH * POSY) + POSX) + X - (GAME_WIDTH * Y))
+#define MEMORY_OFFSET(POSX, POSY, X, Y) ((((384 * 240) - 384) - (384 * POSY) + POSX) + X - (384 * Y))
 #define WORLD_MAP_MEMORY_OFFSET(GAME_WIDTH, GAME_HEIGHT, POSX, POSY) (((GAME_WIDTH * GAME_HEIGHT) - GAME_WIDTH) + POSX - (GAME_WIDTH * POSY))
 #define BITMAP_MEMORY_OFFSET(POSX, POSY, X, Y) (((POSX * POSY) - POSX) + X - (POSX * Y))
 #define STARTING_FONT_SHEET_BYTE(WIDTH, HEIGHT, CHAR_WIDTH, N) ((WIDTH * HEIGHT) - WIDTH + (CHAR_WIDTH * N))
@@ -60,14 +61,14 @@
 #define TILE_CASTLE 25
 #define TILE_HOUSE 26
 //  map bitmap file names
-#define DEFAULT_MAP L"island.bmp"
+#define DEFAULT_MAP L"BigMap.bmp"
 #define MAP_ISLAND L"island.bmp"
 #define MAP_ISLAND2 L"island2.bmp"
 #define MAP_MOUNTAIN L"mountain.bmp"
 #define MAP_CASTLE L"castle.bmp"
 #define MAP_BIG L"BigMap.bmp"
 //  tile map file names
-#define DEFAULT_TILE_MAP L"island.tmx"
+#define DEFAULT_TILE_MAP L"BigMap.tmx"
 #define MAP_ISLAND_TILEMAP L"island.tmx"
 #define MAP_ISLAND2_TILEMAP L"island2.tmx"
 #define MAP_MOUNTAIN_TILEMAP L"mountain.tmx"
@@ -153,6 +154,11 @@ typedef struct GAME_STATE {
 	int8_t GamePadID;
 } GAMESTATE;
 
+typedef struct UPOINT_T {
+	uint16_t x;
+	uint16_t y;
+} UPOINT;
+
 //  globals  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 MONITORINFO MonitorInfo;
 IXAudio2 *XAudio;
@@ -169,6 +175,7 @@ LPCWSTR PlayerBitmaps[PLAYER_BITMAPS] = { HERO_DOWN_STAND, HERO_DOWN_WALK1, HERO
 uint8_t TileTypes[TILE_TYPES] = { TILE_WATER, TILE_SNOW_MOUNTAIN, TILE_MOUNTAIN, TILE_FOREST_TREE, TILE_PALMTREE, TILE_CASTLE, TILE_HOUSE };
 uint16_t GAME_WIDTH;
 uint16_t GAME_HEIGHT;
+UPOINT Camera;
 
 //  prototypes  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Init(void);
@@ -194,8 +201,11 @@ void Init(void)
 	GameState.CurrentMap = DEFAULT_MAP;
 	GameState.GamePadID = -1;
 
-	Player.PosX = 32;
-	Player.PosY = 32;
+	Camera.x = 0;
+	Camera.y = 0;
+
+	Player.PosX = 16;
+	Player.PosY = 16;
 	Player.WorldPosX = Player.PosX / 16;
 	Player.WorldPosY = Player.PosY / 16;
 	Player.MovementRemaining = 0;
@@ -430,7 +440,8 @@ void RenderGraphics(_In_ HWND hGameWnd)
 
 	HDC hdc = GetDC(hGameWnd);	
 
-	StretchDIBits(hdc, 0, 0, GamePerformanceData.MonitorWidth, GamePerformanceData.MonitorHeight, 0, 0, GAME_WIDTH, GAME_HEIGHT, BackBuffer.Memory, &BackBuffer.BitMapInfo, DIB_RGB_COLORS, SRCCOPY);
+	//StretchDIBits(hdc, 0, 0, GamePerformanceData.MonitorWidth, GamePerformanceData.MonitorHeight, 0, 0, GAME_WIDTH, GAME_HEIGHT, BackBuffer.Memory, &BackBuffer.BitMapInfo, DIB_RGB_COLORS, SRCCOPY);
+	StretchDIBits(hdc, 0, 0, GamePerformanceData.MonitorWidth, GamePerformanceData.MonitorHeight, 0, 0, 384, 240, BackBuffer.Memory, &BackBuffer.BitMapInfo, DIB_RGB_COLORS, SRCCOPY);
 
 	ReleaseDC(hGameWnd, hdc);
 }
@@ -520,7 +531,7 @@ void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ uint16_t XPixel, _In_ uint16_
 			BitmapOctoPixel = _mm256_permute4x64_epi64(Recombined, _MM_SHUFFLE(3, 1, 2, 0));
 			__m256i Mask = _mm256_cmpeq_epi8(BitmapOctoPixel, _mm256_set1_epi8(-1));
 
-			_mm256_maskstore_epi32((int32_t*) ((PIXEL32*) BackBuffer.Memory + MEMORY_OFFSET(GAME_WIDTH, GAME_HEIGHT, XPixel, YPixel, x, y)), Mask, BitmapOctoPixel);
+			_mm256_maskstore_epi32((int32_t*) ((PIXEL32*) BackBuffer.Memory + MEMORY_OFFSET(XPixel, YPixel, x, y)), Mask, BitmapOctoPixel);
 			
 			PixelsRemaining -= 8;
 			x += 8;
@@ -534,7 +545,7 @@ void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ uint16_t XPixel, _In_ uint16_
 				BitmapPixel.Green = (uint8_t) min(255, max((BitmapPixel.Green + Brightness), 0));
 				BitmapPixel.Blue = (uint8_t) min(255, max((BitmapPixel.Blue + Brightness), 0));
 
-				memcpy_s((PIXEL32*) BackBuffer.Memory + MEMORY_OFFSET(GAME_WIDTH, GAME_HEIGHT, XPixel, YPixel, x, y), sizeof(PIXEL32), &BitmapPixel, sizeof(PIXEL32));
+				memcpy_s((PIXEL32*) BackBuffer.Memory + MEMORY_OFFSET(XPixel, YPixel, x, y), sizeof(PIXEL32), &BitmapPixel, sizeof(PIXEL32));
 			}
 				
 			PixelsRemaining--;
@@ -542,6 +553,62 @@ void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ uint16_t XPixel, _In_ uint16_
 		}
 	}
 }
+
+/*
+void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ uint16_t XPixel, _In_ uint16_t YPixel, int16_t Brightness)
+{
+	uint32_t StartingScreenPixel = ((384 * 240) - 384 * YPixel) + XPixel;
+	uint32_t StartingBitMapPixel = ((BitMap->BitMapInfo.bmiHeader.biWidth * BitMap->BitMapInfo.bmiHeader.biHeight) - BitMap->BitMapInfo.bmiHeader.biWidth);
+	
+	uint32_t MemoryOffset = 0;
+	uint32_t BitMapOffset = 0;
+	PIXEL32 BitmapPixel;
+	__m256i BitmapOctoPixel;
+	
+	ZeroMemory(&BitmapPixel, sizeof(PIXEL32));
+	ZeroMemory(&BitmapOctoPixel, sizeof(__m256i));
+	
+	for (uint16_t y = 0; y < BitMap->BitMapInfo.bmiHeader.biHeight; y++) {
+		uint16_t PixelsRemaining = (uint16_t) BitMap->BitMapInfo.bmiHeader.biWidth;
+		uint16_t x = 0;
+		
+		MemoryOffset = StartingScreenPixel + x - (384 * y);
+		BitMapOffset = StartingBitMapPixel + x - (BitMap->BitMapInfo.bmiHeader.biWidth * y);
+			
+		while (PixelsRemaining >= 8) {
+			BitmapOctoPixel = _mm256_load_si256((__m256i*) ((PIXEL32*) BitMap->Memory + StartingBitMapPixel));
+
+			__m256i Half1 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(BitmapOctoPixel, 0));
+			Half1 = _mm256_add_epi16(Half1, _mm256_set_epi16(0, Brightness, Brightness, Brightness, 0, Brightness, Brightness, Brightness, 0, Brightness, Brightness, Brightness, 0, Brightness, Brightness, Brightness));
+			__m256i Half2 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(BitmapOctoPixel, 1));
+			Half2 = _mm256_add_epi16(Half2, _mm256_set_epi16(0, Brightness, Brightness, Brightness, 0, Brightness, Brightness, Brightness, 0, Brightness, Brightness, Brightness, 0, Brightness, Brightness, Brightness));
+			__m256i Recombined = _mm256_packus_epi16(Half1, Half2);
+			BitmapOctoPixel = _mm256_permute4x64_epi64(Recombined, _MM_SHUFFLE(3, 1, 2, 0));
+			__m256i Mask = _mm256_cmpeq_epi8(BitmapOctoPixel, _mm256_set1_epi8(-1));
+
+			_mm256_maskstore_epi32((int32_t*) ((PIXEL32*) BackBuffer.Memory + MemoryOffset), Mask, BitmapOctoPixel);
+			
+			PixelsRemaining -= 8;
+			x += 8;
+		}
+		
+		while (PixelsRemaining > 0) {
+			memcpy_s(&BitmapPixel, sizeof(PIXEL32), (PIXEL32*) BitMap->Memory + StartingBitMapPixel, sizeof(PIXEL32));
+
+			if (BitmapPixel.Alpha == 255) {
+				BitmapPixel.Red = (uint8_t) min(255, max((BitmapPixel.Red + Brightness), 0));
+				BitmapPixel.Green = (uint8_t) min(255, max((BitmapPixel.Green + Brightness), 0));
+				BitmapPixel.Blue = (uint8_t) min(255, max((BitmapPixel.Blue + Brightness), 0));
+
+				memcpy_s((PIXEL32*) BackBuffer.Memory + MemoryOffset, sizeof(PIXEL32), &BitmapPixel, sizeof(PIXEL32));
+			}
+				
+			PixelsRemaining--;
+			x++;
+		}
+	}
+}
+*/
 
 void BlitBitmapString(_In_ const char *String, _In_ GAMEBITMAP *BitMap, _In_ PIXEL32 *Color, _In_ uint16_t XPixel, _In_ uint16_t YPixel)
 {
@@ -595,6 +662,7 @@ void BlitBitmapString(_In_ const char *String, _In_ GAMEBITMAP *BitMap, _In_ PIX
 		HeapFree(GetProcessHeap(), 0, StringBitmap.Memory);
 }
 
+/*
 void BlitWorldBitmap(_In_ GAMEBITMAP *BitMap)
 {
 	__m256i BitmapOctoPixel;
@@ -605,6 +673,30 @@ void BlitWorldBitmap(_In_ GAMEBITMAP *BitMap)
 		for (uint16_t x = 0; x < GAME_WIDTH; x += 8) {
 			BitmapOctoPixel = _mm256_load_si256((__m256i*) ((PIXEL32*) BitMap->Memory + BITMAP_MEMORY_OFFSET(BitMap->BitMapInfo.bmiHeader.biWidth, BitMap->BitMapInfo.bmiHeader.biHeight, x, y)));
 			_mm256_store_si256((__m256i*) ((PIXEL32*) BackBuffer.Memory + WORLD_MAP_MEMORY_OFFSET(GAME_WIDTH, GAME_HEIGHT, x, y)), BitmapOctoPixel);
+		}
+	}
+}
+*/
+
+void BlitWorldBitmap(_In_ GAMEBITMAP *BitMap)
+{
+	uint32_t StartingScreenPixel = ((384 * 240) - 384);
+	uint32_t StartingBitMapPixel = ((BitMap->BitMapInfo.bmiHeader.biWidth * BitMap->BitMapInfo.bmiHeader.biHeight) - BitMap->BitMapInfo.bmiHeader.biWidth) + Camera.x - (BitMap->BitMapInfo.bmiHeader.biWidth * Camera.y);
+	
+	uint32_t MemoryOffset = 0;
+	uint32_t BitMapOffset = 0;
+	
+	__m256i BitmapOctoPixel;
+	
+	ZeroMemory(&BitmapOctoPixel, sizeof(__m256i));
+	
+	for (uint16_t y = 0; y < 240; y++) {
+		for (uint16_t x = 0; x < 384; x++) {
+			MemoryOffset = StartingScreenPixel + x - (384 * y);
+			BitMapOffset = StartingBitMapPixel + x - (BitMap->BitMapInfo.bmiHeader.biWidth * y);
+			
+			BitmapOctoPixel = _mm256_load_si256((__m256i*) ((PIXEL32*) BitMap->Memory + BitMapOffset));
+			_mm256_store_si256((__m256i*) ((PIXEL32*) BackBuffer.Memory + MemoryOffset), BitmapOctoPixel);
 		}
 	}
 }
@@ -779,8 +871,10 @@ void LoadTileMapFromFile(_In_ LPCWSTR FileName, _Inout_ TILEMAP* TileMap)
 	GAME_HEIGHT = TileMap->Height * 16;
 
 	BackBuffer.BitMapInfo.bmiHeader.biSize = sizeof(BackBuffer.BitMapInfo.bmiHeader);
-	BackBuffer.BitMapInfo.bmiHeader.biWidth = GAME_WIDTH;
-	BackBuffer.BitMapInfo.bmiHeader.biHeight = GAME_HEIGHT;
+	//BackBuffer.BitMapInfo.bmiHeader.biWidth = GAME_WIDTH;
+	//BackBuffer.BitMapInfo.bmiHeader.biHeight = GAME_HEIGHT;
+	BackBuffer.BitMapInfo.bmiHeader.biWidth = 384;
+	BackBuffer.BitMapInfo.bmiHeader.biHeight = 240;
 	BackBuffer.BitMapInfo.bmiHeader.biBitCount = GAME_BPP;
 	BackBuffer.BitMapInfo.bmiHeader.biCompression = BI_RGB;
 	BackBuffer.BitMapInfo.bmiHeader.biPlanes = 1;
