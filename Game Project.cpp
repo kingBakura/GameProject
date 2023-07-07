@@ -1,7 +1,7 @@
 /*
 	Unnamed game project
 
-	APIs : Win32 API, XAudio2 API, XInput API, C++ standard library, C standard library
+	APIs : Win32 API, XAudio2 API, XInput API, C standard library
 
 	supported image file types: 32bit color BMP, BMPX (ARGB, XRGB)
 	supported sound file types: WAV (sound effects and music)
@@ -16,8 +16,6 @@
 #include <xaudio2.h>
 //  XInput
 #include <xinput.h>
-//  C++ standard library
-#include <vector>
 //  C standard library
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,7 +38,7 @@
 #define FONT_SHEET_CHARACTERS_PER_ROW 98
 #define SFX_SOURCE_VOICES 4
 //  memory offsets
-#define MEMORY_OFFSET(POSX, POSY, X, Y) ((((384 * 240) - 384) - (384 * POSY) + POSX) + X - (384 * Y))
+#define MEMORY_OFFSET(POSX, POSY, X, Y) ((((SCREEN_WIDTH * SCREEN_HEIGHT) - SCREEN_WIDTH) - (SCREEN_WIDTH * POSY) + POSX) + X - (SCREEN_WIDTH * Y))
 #define WORLD_MAP_MEMORY_OFFSET(GAME_WIDTH, GAME_HEIGHT, POSX, POSY) (((GAME_WIDTH * GAME_HEIGHT) - GAME_WIDTH) + POSX - (GAME_WIDTH * POSY))
 #define BITMAP_MEMORY_OFFSET(POSX, POSY, X, Y) (((POSX * POSY) - POSX) + X - (POSX * Y))
 #define STARTING_FONT_SHEET_BYTE(WIDTH, HEIGHT, CHAR_WIDTH, N) ((WIDTH * HEIGHT) - WIDTH + (CHAR_WIDTH * N))
@@ -98,7 +96,6 @@
 //  enums	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 enum WALK { WALK_1, WALK_2, WALK_3 };
 enum DIRECTION { DIRECTION_DOWN, DIRECTION_UP, DIRECTION_RIGHT, DIRECTION_LEFT };
-enum NUMBER_KEYS { VK_1 = 0x31, VK_2 = 0x32, VK_3 = 0x33, VK_4 = 0x34, VK_5 = 0x35 };
 enum ALPHA_KEYS { VK_A = 0x41, VK_D = 0x44, VK_S = 0x53, VK_W = 0x57 };
 
 //  structs	/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -132,6 +129,8 @@ typedef struct PLAYER_OBJECT {
 	GAMEBITMAP Sprite[4][3];
 	uint16_t PosX;
 	uint16_t PosY;
+	uint16_t TruePosX;
+	uint16_t TruePosY;
 	uint16_t WorldPosX;
 	uint16_t WorldPosY;
 	uint8_t MovementRemaining;
@@ -145,7 +144,7 @@ typedef struct GAME_SOUND {
 } GAMESOUND;
 
 typedef struct TILE_MAP {
-	std::vector<std::vector<uint16_t>> Map;
+	uint16_t **Map;
 	uint16_t Width;
 	uint16_t Height;
 } TILEMAP;
@@ -172,11 +171,10 @@ PLAYER Player;
 GAMEBITMAP BackBuffer, WorldMapBuffer, FontSheetBuffer;
 GAMESOUND BGM, SFX;
 TILEMAP TileMap;
+UPOINT Camera;
 LPCWSTR PlayerBitmaps[PLAYER_BITMAPS] = { HERO_DOWN_STAND, HERO_DOWN_WALK1, HERO_DOWN_WALK2, HERO_UP_STAND, HERO_UP_WALK1, HERO_UP_WALK2, HERO_RIGHT_STAND, HERO_RIGHT_WALK1, HERO_RIGHT_WALK2, HERO_LEFT_STAND, HERO_LEFT_WALK1, HERO_LEFT_WALK2 };
 uint8_t TileTypes[TILE_TYPES] = { TILE_WATER, TILE_SNOW_MOUNTAIN, TILE_MOUNTAIN, TILE_FOREST_TREE, TILE_PALMTREE, TILE_CASTLE, TILE_HOUSE };
-uint16_t GAME_WIDTH;
-uint16_t GAME_HEIGHT;
-UPOINT Camera;
+uint16_t GameWidth, GameHeight;
 
 //  prototypes  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Init(void);
@@ -202,11 +200,13 @@ void Init(void)
 	GameState.CurrentMap = DEFAULT_MAP;
 	GameState.GamePadID = -1;
 
-	Camera.x = 0;
-	Camera.y = 0;
+	Camera.x = 1;
+	Camera.y = 1;
 
 	Player.PosX = 16;
 	Player.PosY = 16;
+	Player.TruePosX = 16;
+	Player.TruePosY = 16;
 	Player.WorldPosX = Player.PosX / 16;
 	Player.WorldPosY = Player.PosY / 16;
 	Player.MovementRemaining = 0;
@@ -251,54 +251,16 @@ void PlayerInput(_In_ HWND hGameWnd)
 		PlaySFX(&SFX);
 	}
 
+	/*
 	if (KEY_DOWN(VK_F2) && !MapDebugKeyWasDown) {
 		GamePerformanceData.MapDebug = !GamePerformanceData.MapDebug;
 		PlaySFX(&SFX);
 	}
-
-	if (KEY_DOWN(VK_1)) {
-		VirtualFree(BackBuffer.Memory, 0, MEM_RELEASE);
-		HeapFree(GetProcessHeap(), 0, WorldMapBuffer.Memory);
-		LoadBitmapFromFile(MAP_ISLAND, &WorldMapBuffer);
-		LoadTileMapFromFile(MAP_ISLAND_TILEMAP , &TileMap);
-		GameState.CurrentMap = MAP_ISLAND;
-	}
-
-	if (KEY_DOWN(VK_2)) {
-		VirtualFree(BackBuffer.Memory, 0, MEM_RELEASE);
-		HeapFree(GetProcessHeap(), 0, WorldMapBuffer.Memory);
-		LoadBitmapFromFile(MAP_ISLAND2, &WorldMapBuffer);
-		LoadTileMapFromFile(MAP_ISLAND2_TILEMAP , &TileMap);
-		GameState.CurrentMap = MAP_ISLAND2;
-	}
-
-	if (KEY_DOWN(VK_3)) {
-		VirtualFree(BackBuffer.Memory, 0, MEM_RELEASE);
-		HeapFree(GetProcessHeap(), 0, WorldMapBuffer.Memory);
-		LoadBitmapFromFile(MAP_MOUNTAIN, &WorldMapBuffer);
-		LoadTileMapFromFile(MAP_MOUNTAIN_TILEMAP , &TileMap);
-		GameState.CurrentMap = MAP_MOUNTAIN;
-	}
-
-	if (KEY_DOWN(VK_4)) {
-		VirtualFree(BackBuffer.Memory, 0, MEM_RELEASE);
-		HeapFree(GetProcessHeap(), 0, WorldMapBuffer.Memory);
-		LoadBitmapFromFile(MAP_CASTLE, &WorldMapBuffer);
-		LoadTileMapFromFile(MAP_CASTLE_TILEMAP , &TileMap);
-		GameState.CurrentMap = MAP_CASTLE;
-	}
-
-	if (KEY_DOWN(VK_5)) {
-		VirtualFree(BackBuffer.Memory, 0, MEM_RELEASE);
-		HeapFree(GetProcessHeap(), 0, WorldMapBuffer.Memory);
-		LoadBitmapFromFile(MAP_BIG, &WorldMapBuffer);
-		LoadTileMapFromFile(MAP_BIG_TILEMAP , &TileMap);
-		GameState.CurrentMap = MAP_BIG;
-	}
+	*/
 	
 	for (uint8_t i = 0; i < TILE_TYPES; i++) {
 		if (KEY_DOWN(VK_DOWN) || KEY_DOWN(VK_S)) {
-			if (Player.WorldPosY < GAME_HEIGHT - 1) {
+			if (Player.WorldPosY < GameHeight - 1) {
 				if (TileMap.Map[Player.WorldPosY+1][Player.WorldPosX] == TileTypes[i])
 					CanMove = FALSE;
 			}
@@ -312,7 +274,7 @@ void PlayerInput(_In_ HWND hGameWnd)
 		}
 
 		if (KEY_DOWN(VK_RIGHT) || KEY_DOWN(VK_D)) {
-			if (Player.WorldPosX < GAME_WIDTH - 1) {
+			if (Player.WorldPosX < GameWidth - 1) {
 				if (TileMap.Map[Player.WorldPosY][Player.WorldPosX+1] == TileTypes[i])
 					CanMove = FALSE;
 			}
@@ -364,25 +326,25 @@ void PlayerInput(_In_ HWND hGameWnd)
 
 	if (!Player.MovementRemaining) {
 		if (KEY_DOWN(VK_DOWN) || KEY_DOWN(VK_S) || BUTTON_DOWN(XInputState.Gamepad.wButtons, XINPUT_GAMEPAD_DPAD_DOWN)) {
-			if (Player.PosY < GAME_HEIGHT - 16 && CanMove) {
+			if (Player.WorldPosY < TileMap.Height  && CanMove) {
 				Player.MovementRemaining = 16;
 				Player.WorldPosY += 1;
 				Player.Direction = DIRECTION_DOWN;
 			}
 		} else if (KEY_DOWN(VK_UP) || KEY_DOWN(VK_W) || BUTTON_DOWN(XInputState.Gamepad.wButtons, XINPUT_GAMEPAD_DPAD_UP)) {
-			if (Player.PosY > 0 && CanMove) {
+			if (Player.WorldPosY >= 0 && CanMove) {
 				Player.MovementRemaining = 16;
 				Player.WorldPosY -= 1;
 				Player.Direction = DIRECTION_UP;
 			}
 		} else if (KEY_DOWN(VK_RIGHT) || KEY_DOWN(VK_D) || BUTTON_DOWN(XInputState.Gamepad.wButtons, XINPUT_GAMEPAD_DPAD_RIGHT)) {
-			if (Player.PosX < GAME_WIDTH - 16 && CanMove) {
+			if (Player.WorldPosX < TileMap.Width && CanMove) {
 				Player.MovementRemaining = 16;
 				Player.WorldPosX += 1;
 				Player.Direction = DIRECTION_RIGHT;
 			}
 		} else if (KEY_DOWN(VK_LEFT) || KEY_DOWN(VK_A) || BUTTON_DOWN(XInputState.Gamepad.wButtons, XINPUT_GAMEPAD_DPAD_LEFT)) {
-			if (Player.PosX > 0 && CanMove) {
+			if (Player.WorldPosX >= 0 && CanMove) {
 				Player.MovementRemaining = 16;
 				Player.WorldPosX -= 1;
 				Player.Direction = DIRECTION_LEFT;
@@ -395,12 +357,14 @@ void PlayerInput(_In_ HWND hGameWnd)
 			if (Player.PosY < SCREEN_HEIGHT - 64) {
 				Player.PosY++;
 			} else {
-				if (Camera.y < SCREEN_HEIGHT) {
+				if (Camera.y < GameHeight) {
 					Camera.y++;
 				} else {
 					Player.PosY++;
 				}
 			}
+
+			Player.TruePosY++;
 		}
 
 		if (Player.Direction == DIRECTION_UP) {
@@ -413,18 +377,22 @@ void PlayerInput(_In_ HWND hGameWnd)
 					Player.PosY--;
 				}
 			}
+
+			Player.TruePosY--;
 		}
 	
 		if (Player.Direction == DIRECTION_RIGHT) {
 			if (Player.PosX < SCREEN_WIDTH - 64) {
 				Player.PosX++;
 			} else {
-				if (Camera.x < SCREEN_WIDTH) {
+				if (Camera.x < GameWidth) {
 					Camera.x++;
 				} else {
 					Player.PosX++;
 				}
 			}
+
+			Player.TruePosX++;
 		}
 	
 		if (Player.Direction == DIRECTION_LEFT) {
@@ -437,6 +405,8 @@ void PlayerInput(_In_ HWND hGameWnd)
 					Player.PosX--;
 				}
 			}
+
+			Player.TruePosX--;
 		}
 
 		switch (Player.MovementRemaining) {
@@ -475,7 +445,7 @@ void RenderGraphics(_In_ HWND hGameWnd)
 
 	HDC hdc = GetDC(hGameWnd);	
 
-	StretchDIBits(hdc, 0, 0, GamePerformanceData.MonitorWidth, GamePerformanceData.MonitorHeight, 0, 0, 384, 240, BackBuffer.Memory, &BackBuffer.BitMapInfo, DIB_RGB_COLORS, SRCCOPY);
+	StretchDIBits(hdc, 0, 0, GamePerformanceData.MonitorWidth, GamePerformanceData.MonitorHeight, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, BackBuffer.Memory, &BackBuffer.BitMapInfo, DIB_RGB_COLORS, SRCCOPY);
 
 	ReleaseDC(hGameWnd, hdc);
 }
@@ -504,6 +474,18 @@ void DrawDebug(void)
 
 	sprintf_s(DebugString, _countof(DebugString), "Map: %ls", GameState.CurrentMap);
 	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 40);
+
+	sprintf_s(DebugString, _countof(DebugString), "Player True PosX: %d", Player.TruePosX);
+	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 48);
+
+	sprintf_s(DebugString, _countof(DebugString), "Player True PosY: %d", Player.TruePosY);
+	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 56);
+
+	sprintf_s(DebugString, _countof(DebugString), "Camera PosX: %d", Camera.x);
+	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 64);
+
+	sprintf_s(DebugString, _countof(DebugString), "Camera PosY: %d", Camera.y);
+	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 72);
 }
 
 void DrawMapDebug(void)
@@ -513,10 +495,10 @@ void DrawMapDebug(void)
 
 	memset(DebugString, 0, sizeof(DebugString));
 
-	for (uint16_t i = 0; i < TileMap.Height; i++) {
-		for (uint16_t j = 0; j < TileMap.Width; j++) {
+	for (uint16_t i = 0; i < 150; i++) {
+		for (uint16_t j = 0; j < 240; j++) {
 			sprintf_s(DebugString, _countof(DebugString), "%d", TileMap.Map[i][j]);
-			BlitBitmapString(DebugString, &FontSheetBuffer, &Color, MAP_DEBUG_OFFSET(GAME_WIDTH, j), MAP_DEBUG_OFFSET(GAME_HEIGHT, i));
+			BlitBitmapString(DebugString, &FontSheetBuffer, &Color, MAP_DEBUG_OFFSET(150, j), MAP_DEBUG_OFFSET(240, i));
 		}
 	}
 }
@@ -549,7 +531,7 @@ void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ uint16_t XPixel, _In_ uint16_
 	
 	ZeroMemory(&BitmapPixel, sizeof(PIXEL32));
 	ZeroMemory(&BitmapOctoPixel, sizeof(__m256i));
-	
+
 	for (uint16_t y = 0; y < BitMap->BitMapInfo.bmiHeader.biHeight; y++) {
 		uint16_t PixelsRemaining = (uint16_t) BitMap->BitMapInfo.bmiHeader.biWidth;
 		uint16_t x = 0;
@@ -642,7 +624,7 @@ void BlitBitmapString(_In_ const char *String, _In_ GAMEBITMAP *BitMap, _In_ PIX
 
 void BlitWorldBitmap(_In_ GAMEBITMAP *BitMap)
 {
-	uint32_t StartingScreenPixel = ((384 * 240) - 384);
+	uint32_t StartingScreenPixel = (SCREEN_WIDTH * SCREEN_HEIGHT) - SCREEN_WIDTH;
 	uint32_t StartingBitMapPixel = ((BitMap->BitMapInfo.bmiHeader.biWidth * BitMap->BitMapInfo.bmiHeader.biHeight) - BitMap->BitMapInfo.bmiHeader.biWidth) + Camera.x - (BitMap->BitMapInfo.bmiHeader.biWidth * Camera.y);
 	
 	uint32_t MemoryOffset = 0;
@@ -651,10 +633,10 @@ void BlitWorldBitmap(_In_ GAMEBITMAP *BitMap)
 	__m256i BitmapOctoPixel;
 	
 	ZeroMemory(&BitmapOctoPixel, sizeof(__m256i));
-	
-	for (uint16_t y = 0; y < 240; y++) {
-		for (uint16_t x = 0; x < 384; x++) {
-			MemoryOffset = StartingScreenPixel + x - (384 * y);
+
+	for (uint16_t y = 0; y < SCREEN_HEIGHT; y++) {
+		for (uint16_t x = 0; x < SCREEN_WIDTH; x++) {
+			MemoryOffset = StartingScreenPixel + x - (SCREEN_WIDTH * y);
 			BitMapOffset = StartingBitMapPixel + x - (BitMap->BitMapInfo.bmiHeader.biWidth * y);
 			
 			BitmapOctoPixel = _mm256_load_si256((__m256i*) ((PIXEL32*) BitMap->Memory + BitMapOffset));
@@ -829,21 +811,23 @@ void LoadTileMapFromFile(_In_ LPCWSTR FileName, _Inout_ TILEMAP* TileMap)
 	memset(TempBuffer, 0, sizeof(TempBuffer));
 
 	//  dynamically allocate memory for the back buffer
-	GAME_WIDTH = TileMap->Width * 16;
-	GAME_HEIGHT = TileMap->Height * 16;
+	GameWidth = TileMap->Width * 16;
+	GameHeight = TileMap->Height * 16;
 
 	BackBuffer.BitMapInfo.bmiHeader.biSize = sizeof(BackBuffer.BitMapInfo.bmiHeader);
-	BackBuffer.BitMapInfo.bmiHeader.biWidth = 384;
-	BackBuffer.BitMapInfo.bmiHeader.biHeight = 240;
+	BackBuffer.BitMapInfo.bmiHeader.biWidth = SCREEN_WIDTH;
+	BackBuffer.BitMapInfo.bmiHeader.biHeight = SCREEN_HEIGHT;
 	BackBuffer.BitMapInfo.bmiHeader.biBitCount = GAME_BPP;
 	BackBuffer.BitMapInfo.bmiHeader.biCompression = BI_RGB;
 	BackBuffer.BitMapInfo.bmiHeader.biPlanes = 1;
 
-	BackBuffer.Memory = VirtualAlloc(NULL, (GAME_WIDTH * GAME_HEIGHT) * 4 , MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	BackBuffer.Memory = VirtualAlloc(NULL, (GameWidth * GameHeight) * 4, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
-	//  dynamically allocate the tile map vector
-	TileMap->Map.clear();
-	TileMap->Map.resize(TileMap->Height, std::vector<uint16_t>(TileMap->Width, 0));
+	//  dynamically allocate the tile map array
+	TileMap->Map = (uint16_t**) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, TileMap->Height * sizeof(void*));
+
+	for (uint16_t i = 0; i < TileMap->Height; i++)
+		TileMap->Map[i] = (uint16_t*) HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, TileMap->Width * sizeof(void*));
 
 	//  get the tile map values
 	Cursor = strstr((char*) Buffer, ",");
