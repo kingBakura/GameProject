@@ -37,19 +37,22 @@
 #define TARGET_MICROSECONDS 16667ULL  //  64fps
 #define FONT_SHEET_CHARACTERS_PER_ROW 98
 #define SFX_SOURCE_VOICES 4
+#define DEFAULT_BRIGHTNESS 0
 //  memory offsets
 #define MEMORY_OFFSET(POSX, POSY, X, Y) ((((SCREEN_WIDTH * SCREEN_HEIGHT) - SCREEN_WIDTH) - (SCREEN_WIDTH * POSY) + POSX) + X - (SCREEN_WIDTH * Y))
 #define WORLD_MAP_MEMORY_OFFSET(GAME_WIDTH, GAME_HEIGHT, POSX, POSY) (((GAME_WIDTH * GAME_HEIGHT) - GAME_WIDTH) + POSX - (GAME_WIDTH * POSY))
 #define BITMAP_MEMORY_OFFSET(POSX, POSY, X, Y) (((POSX * POSY) - POSX) + X - (POSX * Y))
+#define BITMAP_MEMORY_CAMERA_OFFSET(POSX, POSY, CAMX, CAMY, X, Y) ((((POSX * POSY) - POSX) + CAMX - (POSX * CAMY)) + X - (POSX * Y))
 #define STARTING_FONT_SHEET_BYTE(WIDTH, HEIGHT, CHAR_WIDTH, N) ((WIDTH * HEIGHT) - WIDTH + (CHAR_WIDTH * N))
 #define FONT_SHEET_OFFSET(BYTE, WIDTH, X, Y) (BYTE + X - (WIDTH * Y))
 #define STRING_BITMAP_OFFSET(N, CHAR_WIDTH, WIDTH, HEIGHT, X, Y) ((N * CHAR_WIDTH) + ((WIDTH * HEIGHT) - WIDTH) + X - (WIDTH * Y))
-#define MAP_DEBUG_OFFSET(SCREEN_SIZE, N) (((SCREEN_SIZE / 16) / 3) + (16 * N) - 4)
 //  keyboard input
 #define KEY_DOWN(VK_CODE) ((GetAsyncKeyState(VK_CODE) & 0x8000) ? 1 : 0)
 #define BUTTON_DOWN(BUTTON, BUTTON_CODE) (((BUTTON & BUTTON_CODE) != 0) ? 1 : 0)
 //  animation
 #define PLAYER_BITMAPS 12
+#define SPRITE_DIRECTIONS 4
+#define SPRITE_ANIMATIONS 3
 //  collision
 #define TILE_TYPES 7
 #define TILE_WATER 2
@@ -126,7 +129,7 @@ typedef struct GAME_PERFORMANCE_DATA {
 } GAMEPERFORMANCEDATA;
 
 typedef struct PLAYER_OBJECT {
-	GAMEBITMAP Sprite[4][3];
+	GAMEBITMAP Sprite[SPRITE_DIRECTIONS][SPRITE_ANIMATIONS];
 	uint16_t PosX;
 	uint16_t PosY;
 	uint16_t TruePosX;
@@ -155,8 +158,8 @@ typedef struct GAME_STATE {
 } GAMESTATE;
 
 typedef struct UPOINT_T {
-	uint16_t x;
-	uint16_t y;
+	uint16_t X;
+	uint16_t Y;
 } UPOINT;
 
 //  globals  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -169,7 +172,7 @@ GAMEPERFORMANCEDATA GamePerformanceData;
 GAMESTATE GameState;
 PLAYER Player;
 GAMEBITMAP BackBuffer, WorldMapBuffer, FontSheetBuffer;
-GAMESOUND BGM, SFX;
+GAMESOUND Bgm, Sfx;
 TILEMAP TileMap;
 UPOINT Camera;
 LPCWSTR PlayerBitmaps[PLAYER_BITMAPS] = { HERO_DOWN_STAND, HERO_DOWN_WALK1, HERO_DOWN_WALK2, HERO_UP_STAND, HERO_UP_WALK1, HERO_UP_WALK2, HERO_RIGHT_STAND, HERO_RIGHT_WALK1, HERO_RIGHT_WALK2, HERO_LEFT_STAND, HERO_LEFT_WALK1, HERO_LEFT_WALK2 };
@@ -181,7 +184,6 @@ void Init(void);
 void PlayerInput(_In_ HWND hGameWnd);
 void RenderGraphics(_In_ HWND hGameWnd);
 void DrawDebug(void);
-void DrawMapDebug(void);
 void LoadBitmapFromFile(_In_ LPCWSTR Filename, _Inout_ GAMEBITMAP *Bitmap);
 void BlitBitmapImage(_In_ GAMEBITMAP *BitMap, _In_ uint16_t XPixel, _In_ uint16_t YPixel, int16_t Brightness);
 void BlitBitmapString(_In_ const char *String, _In_ GAMEBITMAP *BitMap, _In_ PIXEL32 *Color, _In_ uint16_t XPixel, _In_ uint16_t YPixel);
@@ -200,8 +202,8 @@ void Init(void)
 	GameState.CurrentMap = DEFAULT_MAP;
 	GameState.GamePadID = -1;
 
-	Camera.x = 1;
-	Camera.y = 1;
+	Camera.X = 0;
+	Camera.Y = 0;
 
 	Player.PosX = 16;
 	Player.PosY = 16;
@@ -215,8 +217,8 @@ void Init(void)
 
 	//  load player bitmap files
 	uint8_t k = 0;
-	for (uint8_t i = 0; i < 4; i++) {
-		for (uint8_t j = 0; j < 3; j++) {
+	for (uint8_t i = 0; i < SPRITE_DIRECTIONS; i++) {
+		for (uint8_t j = 0; j < SPRITE_ANIMATIONS; j++) {
 			LoadBitmapFromFile(PlayerBitmaps[k], &Player.Sprite[i][j]);
 			k++;
 		}
@@ -232,15 +234,14 @@ void Init(void)
 	LoadTileMapFromFile(DEFAULT_TILE_MAP , &TileMap);
 
 	//  load wave files
-	LoadWavFromFile(MENU_NAVIGATE_SFX, &SFX);
-	LoadWavFromFile(MAP_THEME_BGM, &BGM);
+	LoadWavFromFile(MENU_NAVIGATE_SFX, &Sfx);
+	LoadWavFromFile(MAP_THEME_BGM, &Bgm);
 }
 
 void PlayerInput(_In_ HWND hGameWnd)
 {
 	BOOL CanMove = TRUE;
 	static uint16_t DebugKeyWasDown = 0;
-	static uint16_t MapDebugKeyWasDown = 0;
 
 	//  keyboard input
 	if (KEY_DOWN(VK_ESCAPE))
@@ -248,15 +249,8 @@ void PlayerInput(_In_ HWND hGameWnd)
 
 	if (KEY_DOWN(VK_F1) && !DebugKeyWasDown) {
 		GamePerformanceData.DisplayDebug = !GamePerformanceData.DisplayDebug;
-		PlaySFX(&SFX);
+		PlaySFX(&Sfx);
 	}
-
-	/*
-	if (KEY_DOWN(VK_F2) && !MapDebugKeyWasDown) {
-		GamePerformanceData.MapDebug = !GamePerformanceData.MapDebug;
-		PlaySFX(&SFX);
-	}
-	*/
 	
 	for (uint8_t i = 0; i < TILE_TYPES; i++) {
 		if (KEY_DOWN(VK_DOWN) || KEY_DOWN(VK_S)) {
@@ -357,8 +351,8 @@ void PlayerInput(_In_ HWND hGameWnd)
 			if (Player.PosY < SCREEN_HEIGHT - 64) {
 				Player.PosY++;
 			} else {
-				if (Camera.y < GameHeight) {
-					Camera.y++;
+				if (Camera.Y < GameHeight) {
+					Camera.Y++;
 				} else {
 					Player.PosY++;
 				}
@@ -371,8 +365,8 @@ void PlayerInput(_In_ HWND hGameWnd)
 			if (Player.PosY > 64) {
 				Player.PosY--;
 			} else {
-				if (Camera.y > 0) {
-					Camera.y--;
+				if (Camera.Y > 0) {
+					Camera.Y--;
 				} else {
 					Player.PosY--;
 				}
@@ -385,8 +379,8 @@ void PlayerInput(_In_ HWND hGameWnd)
 			if (Player.PosX < SCREEN_WIDTH - 64) {
 				Player.PosX++;
 			} else {
-				if (Camera.x < GameWidth) {
-					Camera.x++;
+				if (Camera.X < GameWidth) {
+					Camera.X++;
 				} else {
 					Player.PosX++;
 				}
@@ -399,8 +393,8 @@ void PlayerInput(_In_ HWND hGameWnd)
 			if (Player.PosX > 64) {
 				Player.PosX--;
 			} else {
-				if (Camera.x > 0) {
-					Camera.x--;
+				if (Camera.X > 0) {
+					Camera.X--;
 				} else {
 					Player.PosX--;
 				}
@@ -429,19 +423,15 @@ void PlayerInput(_In_ HWND hGameWnd)
 	}
 
 	DebugKeyWasDown = KEY_DOWN(VK_F1);
-	MapDebugKeyWasDown = KEY_DOWN(VK_F2);
 }
 
 void RenderGraphics(_In_ HWND hGameWnd)
 {
 	BlitWorldBitmap(&WorldMapBuffer);
-	BlitBitmapImage(&Player.Sprite[Player.Direction][Player.SpriteIndex], Player.PosX, Player.PosY, 0);
+	BlitBitmapImage(&Player.Sprite[Player.Direction][Player.SpriteIndex], Player.PosX, Player.PosY, DEFAULT_BRIGHTNESS);
 
 	if (GamePerformanceData.DisplayDebug)
 		DrawDebug();
-
-	if (GamePerformanceData.MapDebug)
-		DrawMapDebug();
 
 	HDC hdc = GetDC(hGameWnd);	
 
@@ -460,47 +450,23 @@ void DrawDebug(void)
 	sprintf_s(DebugString, _countof(DebugString), "FPS: %.01f", GamePerformanceData.AverageFPS);
 	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 0);
 
-	sprintf_s(DebugString, _countof(DebugString), "Player X: %d", Player.PosX);
+	sprintf_s(DebugString, _countof(DebugString), "Player XY: %d,%d", Player.PosX, Player.PosY);
 	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 8);
 
-	sprintf_s(DebugString, _countof(DebugString), "Player Y: %d", Player.PosY);
+	sprintf_s(DebugString, _countof(DebugString), "Player World PosXY: %d,%d", Player.WorldPosX, Player.WorldPosY);
 	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 16);
 
-	sprintf_s(DebugString, _countof(DebugString), "Player World PosX: %d", Player.WorldPosX);
+	sprintf_s(DebugString, _countof(DebugString), "Player True PosXY: %d,%d", Player.TruePosX, Player.TruePosY);
 	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 24);
 
-	sprintf_s(DebugString, _countof(DebugString), "Player World PosY: %d", Player.WorldPosY);
+	sprintf_s(DebugString, _countof(DebugString), "Camera PosXY: %d,%d", Camera.X, Camera.Y);
 	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 32);
 
 	sprintf_s(DebugString, _countof(DebugString), "Map: %ls", GameState.CurrentMap);
 	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 40);
 
-	sprintf_s(DebugString, _countof(DebugString), "Player True PosX: %d", Player.TruePosX);
+	sprintf_s(DebugString, _countof(DebugString), "Map Width Height: %d,%d", GameWidth, GameHeight);
 	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 48);
-
-	sprintf_s(DebugString, _countof(DebugString), "Player True PosY: %d", Player.TruePosY);
-	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 56);
-
-	sprintf_s(DebugString, _countof(DebugString), "Camera PosX: %d", Camera.x);
-	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 64);
-
-	sprintf_s(DebugString, _countof(DebugString), "Camera PosY: %d", Camera.y);
-	BlitBitmapString(DebugString, &FontSheetBuffer, &Color, 0, 72);
-}
-
-void DrawMapDebug(void)
-{
-	char DebugString[64];
-	PIXEL32 Color = { 0x00, 0x00, 0x00, 0xFF };  //  black
-
-	memset(DebugString, 0, sizeof(DebugString));
-
-	for (uint16_t i = 0; i < 150; i++) {
-		for (uint16_t j = 0; j < 240; j++) {
-			sprintf_s(DebugString, _countof(DebugString), "%d", TileMap.Map[i][j]);
-			BlitBitmapString(DebugString, &FontSheetBuffer, &Color, MAP_DEBUG_OFFSET(150, j), MAP_DEBUG_OFFSET(240, i));
-		}
-	}
 }
 
 void LoadBitmapFromFile(_In_ LPCWSTR Filename, _Inout_ GAMEBITMAP *Bitmap)
@@ -616,7 +582,7 @@ void BlitBitmapString(_In_ const char *String, _In_ GAMEBITMAP *BitMap, _In_ PIX
 		}
 	}
 
-	BlitBitmapImage(&StringBitmap, XPixel, YPixel, 0);
+	BlitBitmapImage(&StringBitmap, XPixel, YPixel, DEFAULT_BRIGHTNESS);
 
 	if (StringBitmap.Memory)
 		HeapFree(GetProcessHeap(), 0, StringBitmap.Memory);
@@ -624,23 +590,14 @@ void BlitBitmapString(_In_ const char *String, _In_ GAMEBITMAP *BitMap, _In_ PIX
 
 void BlitWorldBitmap(_In_ GAMEBITMAP *BitMap)
 {
-	uint32_t StartingScreenPixel = (SCREEN_WIDTH * SCREEN_HEIGHT) - SCREEN_WIDTH;
-	uint32_t StartingBitMapPixel = ((BitMap->BitMapInfo.bmiHeader.biWidth * BitMap->BitMapInfo.bmiHeader.biHeight) - BitMap->BitMapInfo.bmiHeader.biWidth) + Camera.x - (BitMap->BitMapInfo.bmiHeader.biWidth * Camera.y);
-	
-	uint32_t MemoryOffset = 0;
-	uint32_t BitMapOffset = 0;
-	
 	__m256i BitmapOctoPixel;
 	
 	ZeroMemory(&BitmapOctoPixel, sizeof(__m256i));
 
 	for (uint16_t y = 0; y < SCREEN_HEIGHT; y++) {
 		for (uint16_t x = 0; x < SCREEN_WIDTH; x++) {
-			MemoryOffset = StartingScreenPixel + x - (SCREEN_WIDTH * y);
-			BitMapOffset = StartingBitMapPixel + x - (BitMap->BitMapInfo.bmiHeader.biWidth * y);
-			
-			BitmapOctoPixel = _mm256_load_si256((__m256i*) ((PIXEL32*) BitMap->Memory + BitMapOffset));
-			_mm256_store_si256((__m256i*) ((PIXEL32*) BackBuffer.Memory + MemoryOffset), BitmapOctoPixel);
+			BitmapOctoPixel = _mm256_load_si256((__m256i*) ((PIXEL32*) BitMap->Memory + BITMAP_MEMORY_CAMERA_OFFSET(BitMap->BitMapInfo.bmiHeader.biWidth, BitMap->BitMapInfo.bmiHeader.biHeight, Camera.X, Camera.Y, x, y)));
+			_mm256_store_si256((__m256i*) ((PIXEL32*) BackBuffer.Memory + WORLD_MAP_MEMORY_OFFSET(SCREEN_WIDTH, SCREEN_HEIGHT, x, y)), BitmapOctoPixel);
 		}
 	}
 }
@@ -963,7 +920,7 @@ int32_t APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInsta
 		}
 
 		PlayerInput(hGameWnd);
-		PlayBGM(&BGM);
+		PlayBGM(&Bgm);
 		RenderGraphics(hGameWnd);
 
 		QueryPerformanceCounter(&GamePerformanceData.EndFrame);
